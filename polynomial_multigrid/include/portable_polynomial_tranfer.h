@@ -650,6 +650,9 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
       prolongation_matrix_1d_view[k] =
           matrix(renumbering_fine[j], renumbering_coarse[i]);
 
+  Kokkos::deep_copy(this->prolongation_matrix_1d, prolongation_matrix_1d_view);
+  Kokkos::fence();
+
   const auto &tria =
       this->matrix_free_coarse->get_dof_handler().get_triangulation();
   std::vector<std::vector<unsigned int>> coarse_cell_ids(n_colors);
