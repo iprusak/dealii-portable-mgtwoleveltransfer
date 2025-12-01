@@ -33,11 +33,9 @@
 
 using namespace dealii;
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-class LaplaceProblem {
+template <int dim, int fe_degree, int mg_levels> class LaplaceProblem {
 public:
-  LaplaceProblem();
+  LaplaceProblem(bool overlap_communication_computation = false);
 
   void run();
 
@@ -64,8 +62,7 @@ private:
 
   std::vector<AffineConstraints<double>> constraints_collection;
 
-  MGLevelObject<std::unique_ptr<Portable::LaplaceOperatorBase<
-      dim, double, overlap_communication_computation>>>
+  MGLevelObject<std::unique_ptr<Portable::LaplaceOperatorBase<dim, double>>>
       mg_matrices;
 
   LinearAlgebra::distributed::Vector<double, MemorySpace::Host>
@@ -75,24 +72,24 @@ private:
   LinearAlgebra::distributed::Vector<double, MemorySpace::Default>
       system_rhs_device;
 
-  MGLevelObject<std::unique_ptr<Portable::PolynomialTransferBase<
-      dim, double, overlap_communication_computation>>>
+  MGLevelObject<std::unique_ptr<Portable::PolynomialTransferBase<dim, double>>>
       mg_transfers;
 
+  bool overlap_communication_computation;
   ConditionalOStream pcout;
 
   struct LaplaceOperatorRunner {
     const int level;
     DoFHandler<dim> &dof_handler;
     AffineConstraints<double> &constraints;
-    LaplaceProblem<dim, fe_degree, mg_levels, overlap_communication_computation>
-        &parent_problem;
+
+    bool overlap_communication_computation;
+    LaplaceProblem<dim, fe_degree, mg_levels> &parent_problem;
 
     template <unsigned int degree> void run() {
       parent_problem.mg_matrices[level] =
-          std::make_unique<Portable::LaplaceOperator<
-              dim, degree, double, overlap_communication_computation>>(
-              dof_handler, constraints);
+          std::make_unique<Portable::LaplaceOperator<dim, degree, double>>(
+              dof_handler, constraints, overlap_communication_computation);
     }
   };
 
@@ -103,13 +100,12 @@ private:
     AffineConstraints<double> &constraints_coarse;
     AffineConstraints<double> &constraints_fine;
 
-    LaplaceProblem<dim, fe_degree, mg_levels, overlap_communication_computation>
-        &parent_problem;
+    LaplaceProblem<dim, fe_degree, mg_levels> &parent_problem;
 
     template <unsigned int degree_coarse, unsigned int degree_fine> void run() {
-      parent_problem.mg_transfers[level] = std::make_unique<
-          Portable::PolynomialTransfer<dim, degree_coarse, degree_fine, double,
-                                       overlap_communication_computation>>();
+      parent_problem.mg_transfers[level] =
+          std::make_unique<Portable::PolynomialTransfer<dim, degree_coarse,
+                                                        degree_fine, double>>();
 
       parent_problem.mg_transfers[level]->reinit(
           mf_coarse, mf_fine, constraints_coarse, constraints_fine);
@@ -117,11 +113,11 @@ private:
   };
 };
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-LaplaceProblem<dim, fe_degree, mg_levels,
-               overlap_communication_computation>::LaplaceProblem()
+template <int dim, int fe_degree, int mg_levels>
+LaplaceProblem<dim, fe_degree, mg_levels>::LaplaceProblem(
+    bool overlap_communication_computation)
     : mpi_communicator(MPI_COMM_WORLD), triangulation(mpi_communicator),
+      overlap_communication_computation(overlap_communication_computation),
       pcout(std::cout,
             Utilities::MPI::this_mpi_process(mpi_communicator) == 0) {
   {
@@ -146,10 +142,8 @@ LaplaceProblem<dim, fe_degree, mg_levels,
   }
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::setup_system() {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::setup_system() {
   Functions::ZeroFunction<dim> homogeneous_dirichlet_bc;
   std::map<types::boundary_id, const Function<dim> *>
       dirichlet_boundary_functions = {
@@ -178,7 +172,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
         dof_handler, dirichlet_boundary_functions, constraints);
     constraints.close();
 
-    LaplaceOperatorRunner runner{level, dof_handler, constraints, *this};
+    LaplaceOperatorRunner runner{level, dof_handler, constraints,
+                                 overlap_communication_computation, *this};
 
     bool success =
         Portable::OperatorDispatchFactory::dispatch(p_degree, runner);
@@ -200,10 +195,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
   system_rhs_device.reinit(solution_device);
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::setup_mg_transfers() {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::setup_mg_transfers() {
   mg_transfers.resize(mg_matrices.min_level(), mg_matrices.max_level());
 
   for (unsigned int level = mg_matrices.min_level() + 1;
@@ -226,10 +219,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
   }
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::assemble_rhs() {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::assemble_rhs() {
   auto &fe = fe_collection.back();
   auto &dof_handler = *dof_handler_collection.back();
   auto &constraints = constraints_collection.back();
@@ -273,17 +264,14 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
   system_rhs_device.import_elements(rw_vector, VectorOperation::insert);
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::solve() {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::solve() {
   auto &constraints = constraints_collection.back();
 
   auto &system_matrix_device = mg_matrices.back();
 
   using SmootherType = PreconditionChebyshev<
-      Portable::LaplaceOperatorBase<dim, double,
-                                    overlap_communication_computation>,
+      Portable::LaplaceOperatorBase<dim, double>,
       LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>;
 
   // mg::SmootherRelaxation<
@@ -313,8 +301,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
     mg_smoothers[level].initialize(*mg_matrices[level], smoother_data);
   }
 
-  Portable::VCycleMultigrid<dim, double, overlap_communication_computation>
-      mg_preconditioner(mg_matrices, mg_transfers, mg_smoothers, 3, 3);
+  Portable::VCycleMultigrid<dim, double> mg_preconditioner(
+      mg_matrices, mg_transfers, mg_smoothers, 3, 3);
 
   SolverControl solver_control(system_rhs_device.size(),
                                1e-12 * system_rhs_device.l2_norm());
@@ -335,11 +323,9 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
   ghost_solution_host.update_ghost_values();
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::
-    output_results(const unsigned int cycle) const {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::output_results(
+    const unsigned int cycle) const {
   auto &dof_handler = *dof_handler_collection.back();
   auto &fe = fe_collection.back();
 
@@ -366,10 +352,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels,
   pcout << "  solution norm: " << global_norm << std::endl;
 }
 
-template <int dim, int fe_degree, int mg_levels,
-          bool overlap_communication_computation>
-void LaplaceProblem<dim, fe_degree, mg_levels,
-                    overlap_communication_computation>::run() {
+template <int dim, int fe_degree, int mg_levels>
+void LaplaceProblem<dim, fe_degree, mg_levels>::run() {
   for (unsigned int cycle = 0; cycle < 9 - dim; ++cycle) {
     pcout << std::endl << std::endl;
     pcout << "Cycle " << cycle << std::endl;
@@ -395,13 +379,13 @@ int main(int argc, char *argv[]) {
   try {
     Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv, 1);
 
-    const int dim = 2;
+    const int dim = 3;
     const int fe_degree = 7;
     const int mg_levels = 7;
     const bool overlap_communication_computation = false;
 
-    LaplaceProblem<dim, fe_degree, mg_levels, overlap_communication_computation>
-        laplace_problem;
+    LaplaceProblem<dim, fe_degree, mg_levels> laplace_problem(
+        overlap_communication_computation);
 
     laplace_problem.run();
   } catch (std::exception &exc) {
