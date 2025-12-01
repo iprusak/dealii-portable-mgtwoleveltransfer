@@ -382,8 +382,8 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number>::prolongate_and_add(
 
   if (matrix_free_fine->use_overlap_communication_computation()) {
     auto do_color = [&](const unsigned int color) {
-      const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
-      const auto &gpu_data_fine = matrix_free_fine->get_data(color);
+      const auto &gpu_data_coarse = matrix_free_coarse->get_data(0, color);
+      const auto &gpu_data_fine = matrix_free_fine->get_data(0, color);
 
       const auto n_cells = gpu_data_fine.n_cells;
 
@@ -430,8 +430,8 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number>::prolongate_and_add(
     src.update_ghost_values();
 
     for (unsigned int color = 0; color < n_colors; ++color) {
-      const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
-      const auto &gpu_data_fine = matrix_free_fine->get_data(color);
+      const auto &gpu_data_coarse = matrix_free_coarse->get_data(0, color);
+      const auto &gpu_data_fine = matrix_free_fine->get_data(0, color);
 
       const auto n_cells = gpu_data_fine.n_cells;
 
@@ -483,8 +483,8 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number>::restrict_and_add(
 
   if (matrix_free_fine->use_overlap_communication_computation()) {
     auto do_color = [&](const unsigned int color) {
-      const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
-      const auto &gpu_data_fine = matrix_free_fine->get_data(color);
+      const auto &gpu_data_coarse = matrix_free_coarse->get_data(0, color);
+      const auto &gpu_data_fine = matrix_free_fine->get_data(0, color);
 
       const auto n_cells = gpu_data_fine.n_cells;
 
@@ -531,8 +531,8 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number>::restrict_and_add(
     src.update_ghost_values();
 
     for (unsigned int color = 0; color < n_colors; ++color) {
-      const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
-      const auto &gpu_data_fine = matrix_free_fine->get_data(color);
+      const auto &gpu_data_coarse = matrix_free_coarse->get_data(0, color);
+      const auto &gpu_data_fine = matrix_free_fine->get_data(0, color);
 
       const auto n_cells = gpu_data_fine.n_cells;
 
@@ -789,7 +789,7 @@ void PolynomialTransfer<dim, p_coarse, p_fine,
 
   for (unsigned int color = 0; color < n_colors; ++color) {
     if (colored_graph_fine[color].size() > 0) {
-      const auto &mf_data_fine = matrix_free_fine->get_data(color);
+      const auto &mf_data_fine = matrix_free_fine->get_data(0, color);
       const auto &graph = colored_graph_fine[color];
 
       weights_view_kokkos[color] =
@@ -826,7 +826,7 @@ void PolynomialTransfer<dim, p_coarse, p_fine,
 
   for (unsigned int color = 0; color < n_colors; ++color) {
     if (colored_graph_fine[color].size() > 0) {
-      const auto &mf_data_coarse = matrix_free_coarse->get_data(color);
+      const auto &mf_data_coarse = matrix_free_coarse->get_data(0, color);
       ;
       const auto &graph = colored_graph_coarse[color];
 
@@ -864,7 +864,7 @@ void PolynomialTransfer<dim, p_coarse, p_fine,
 
   for (unsigned int color = 0; color < n_colors; ++color) {
     if (colored_graph_fine[color].size() > 0) {
-      const auto &mf_data_fine = matrix_free_fine->get_data(color);
+      const auto &mf_data_fine = matrix_free_fine->get_data(0, color);
       const auto &graph = colored_graph_fine[color];
 
       this->boundary_dofs_mask_fine[color] =
