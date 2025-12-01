@@ -23,16 +23,14 @@ DEAL_II_NAMESPACE_OPEN
 
 namespace Portable {
 
-template <int dim, typename number, bool overlap_communication_computation>
+template <int dim, typename number>
 class VCycleMultigrid : public EnableObserverPointer {
 public:
   using VectorType =
       LinearAlgebra::distributed::Vector<number, MemorySpace::Default>;
-  using LevelMatrixType =
-      LaplaceOperatorBase<dim, number, overlap_communication_computation>;
+  using LevelMatrixType = LaplaceOperatorBase<dim, number>;
   using SmootherType = PreconditionChebyshev<LevelMatrixType, VectorType>;
-  using TranserType =
-      PolynomialTransferBase<dim, number, overlap_communication_computation>;
+  using TranserType = PolynomialTransferBase<dim, number>;
 
   // FIXME: mg::SmootherRelaxation seems not to work with MemorySpace::Default
   // hence manual smooth below
@@ -63,22 +61,21 @@ private:
   const unsigned int post_smoothing_steps;
 };
 
-template <int dim, typename number, bool overlap_communication_computation>
-VCycleMultigrid<dim, number, overlap_communication_computation>::
-    VCycleMultigrid(
-        const MGLevelObject<std::unique_ptr<LevelMatrixType>> &mg_matrices,
-        const MGLevelObject<std::unique_ptr<TranserType>> &mg_transfers,
-        // const mg::SmootherRelaxation<SmootherType, VectorType> &mg_smoothers,
-        const MGLevelObject<SmootherType> &mg_smoothers,
-        const unsigned int pre_smoothing_steps,
-        const unsigned int post_smoothing_steps)
+template <int dim, typename number>
+VCycleMultigrid<dim, number>::VCycleMultigrid(
+    const MGLevelObject<std::unique_ptr<LevelMatrixType>> &mg_matrices,
+    const MGLevelObject<std::unique_ptr<TranserType>> &mg_transfers,
+    // const mg::SmootherRelaxation<SmootherType, VectorType> &mg_smoothers,
+    const MGLevelObject<SmootherType> &mg_smoothers,
+    const unsigned int pre_smoothing_steps,
+    const unsigned int post_smoothing_steps)
     : mg_matrices(mg_matrices), mg_transfers(mg_transfers),
       mg_smoothers(mg_smoothers), pre_smoothing_steps(pre_smoothing_steps),
       post_smoothing_steps(post_smoothing_steps) {}
 
-template <int dim, typename number, bool overlap_communication_computation>
-void VCycleMultigrid<dim, number, overlap_communication_computation>::vmult(
-    VectorType &dst, const VectorType &src) const {
+template <int dim, typename number>
+void VCycleMultigrid<dim, number>::vmult(VectorType &dst,
+                                         const VectorType &src) const {
   AssertDimension(dst.size(), src.size());
   Assert(dst.get_partitioner() == mg_matrices.back()->get_vector_partitioner(),
          ExcMessage("Vector is not correctly initialized."));
@@ -89,9 +86,9 @@ void VCycleMultigrid<dim, number, overlap_communication_computation>::vmult(
   v_cycle(dst, src, mg_matrices.max_level());
 }
 
-template <int dim, typename number, bool overlap_communication_computation>
-void VCycleMultigrid<dim, number, overlap_communication_computation>::smooth(
-    VectorType &u, const VectorType &rhs, const unsigned int level) const {
+template <int dim, typename number>
+void VCycleMultigrid<dim, number>::smooth(VectorType &u, const VectorType &rhs,
+                                          const unsigned int level) const {
   Assert(level >= mg_matrices.min_level() && level <= mg_matrices.max_level(),
          ExcMessage("Level out of range"));
 
@@ -129,9 +126,10 @@ void VCycleMultigrid<dim, number, overlap_communication_computation>::smooth(
   // u.add(0.7, d);                                      // u += \omega *d
 }
 
-template <int dim, typename number, bool overlap_communication_computation>
-void VCycleMultigrid<dim, number, overlap_communication_computation>::v_cycle(
-    VectorType &dst, const VectorType &src, const unsigned int level) const {
+template <int dim, typename number>
+void VCycleMultigrid<dim, number>::v_cycle(VectorType &dst,
+                                           const VectorType &src,
+                                           const unsigned int level) const {
   {
     Assert(level >= mg_matrices.min_level() && level <= mg_matrices.max_level(),
            ExcMessage("Level out of range"));

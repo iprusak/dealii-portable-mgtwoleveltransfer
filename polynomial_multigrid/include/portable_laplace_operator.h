@@ -53,14 +53,12 @@ LocalLaplaceOperator<dim, fe_degree, number>::operator()(
   fe_eval.distribute_local_to_global(dst);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-class LaplaceOperator
-    : public LaplaceOperatorBase<dim, number,
-                                 overlap_communication_computation> {
+template <int dim, int fe_degree, typename number>
+class LaplaceOperator : public LaplaceOperatorBase<dim, number> {
 public:
   LaplaceOperator(const DoFHandler<dim> &dof_handler,
-                  const AffineConstraints<number> &constraints);
+                  const AffineConstraints<number> &constraints,
+                  bool overlap_communication_computation = false);
 
   void
   vmult(LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
@@ -119,11 +117,11 @@ private:
       inverse_diagonal_entries;
 };
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::
-    LaplaceOperator(const DoFHandler<dim> &dof_handler,
-                    const AffineConstraints<number> &constraints) {
+template <int dim, int fe_degree, typename number>
+LaplaceOperator<dim, fe_degree, number>::LaplaceOperator(
+    const DoFHandler<dim> &dof_handler,
+    const AffineConstraints<number> &constraints,
+    bool overlap_communication_computation) {
   const MappingQ<dim> mapping(fe_degree);
   typename MatrixFree<dim, number>::AdditionalData additional_data;
 
@@ -137,13 +135,11 @@ LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::
                  additional_data);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-void LaplaceOperator<dim, fe_degree, number,
-                     overlap_communication_computation>::
-    vmult(LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
-          const LinearAlgebra::distributed::Vector<number, MemorySpace::Default>
-              &src) const {
+template <int dim, int fe_degree, typename number>
+void LaplaceOperator<dim, fe_degree, number>::vmult(
+    LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
+    const LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &src)
+    const {
   AssertDimension(dst.size(), src.size());
   Assert(dst.get_partitioner() == mf_data.get_vector_partitioner(),
          ExcMessage("Vector is not correctly initialized."));
@@ -158,14 +154,11 @@ void LaplaceOperator<dim, fe_degree, number,
   mf_data.copy_constrained_values(src, dst);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-void LaplaceOperator<dim, fe_degree, number,
-                     overlap_communication_computation>::
-    Tvmult(
-        LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
-        const LinearAlgebra::distributed::Vector<number, MemorySpace::Default>
-            &src) const {
+template <int dim, int fe_degree, typename number>
+void LaplaceOperator<dim, fe_degree, number>::Tvmult(
+    LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
+    const LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &src)
+    const {
   AssertDimension(dst.size(), src.size());
   Assert(dst.get_partitioner() == mf_data.get_vector_partitioner(),
          ExcMessage("Vector is not correctly initialized."));
@@ -175,28 +168,21 @@ void LaplaceOperator<dim, fe_degree, number,
   vmult(dst, src);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-void LaplaceOperator<dim, fe_degree, number,
-                     overlap_communication_computation>::
-    initialize_dof_vector(
-        LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &vec)
-        const {
+template <int dim, int fe_degree, typename number>
+void LaplaceOperator<dim, fe_degree, number>::initialize_dof_vector(
+    LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &vec)
+    const {
   mf_data.initialize_dof_vector(vec);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
+template <int dim, int fe_degree, typename number>
 const MatrixFree<dim, number> &
-LaplaceOperator<dim, fe_degree, number,
-                overlap_communication_computation>::get_mf_data() const {
+LaplaceOperator<dim, fe_degree, number>::get_mf_data() const {
   return mf_data;
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-void LaplaceOperator<dim, fe_degree, number,
-                     overlap_communication_computation>::compute_diagonal() {
+template <int dim, int fe_degree, typename number>
+void LaplaceOperator<dim, fe_degree, number>::compute_diagonal() {
   this->inverse_diagonal_entries.reset(
       new DiagonalMatrix<
           LinearAlgebra::distributed::Vector<number, MemorySpace::Default>>());
@@ -222,35 +208,25 @@ void LaplaceOperator<dim, fe_degree, number,
       });
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
+template <int dim, int fe_degree, typename number>
 std::shared_ptr<DiagonalMatrix<
     LinearAlgebra::distributed::Vector<number, MemorySpace::Default>>>
-LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::
-    get_matrix_diagonal_inverse() const {
+LaplaceOperator<dim, fe_degree, number>::get_matrix_diagonal_inverse() const {
   return inverse_diagonal_entries;
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-types::global_dof_index
-LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::m()
-    const {
+template <int dim, int fe_degree, typename number>
+types::global_dof_index LaplaceOperator<dim, fe_degree, number>::m() const {
   return mf_data.get_vector_partitioner()->size();
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-types::global_dof_index
-LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::n()
-    const {
+template <int dim, int fe_degree, typename number>
+types::global_dof_index LaplaceOperator<dim, fe_degree, number>::n() const {
   return mf_data.get_vector_partitioner()->size();
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
-number
-LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::el(
+template <int dim, int fe_degree, typename number>
+number LaplaceOperator<dim, fe_degree, number>::el(
     const types::global_dof_index row,
     const types::global_dof_index col) const {
   (void)col;
@@ -262,12 +238,9 @@ LaplaceOperator<dim, fe_degree, number, overlap_communication_computation>::el(
   return 1.0 / (*inverse_diagonal_entries)(row, row);
 }
 
-template <int dim, int fe_degree, typename number,
-          bool overlap_communication_computation>
+template <int dim, int fe_degree, typename number>
 const std::shared_ptr<const Utilities::MPI::Partitioner> &
-LaplaceOperator<dim, fe_degree, number,
-                overlap_communication_computation>::get_vector_partitioner()
-    const {
+LaplaceOperator<dim, fe_degree, number>::get_vector_partitioner() const {
   return mf_data.get_vector_partitioner();
 }
 

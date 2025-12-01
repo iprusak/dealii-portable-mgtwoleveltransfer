@@ -12,7 +12,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 namespace Portable {
-template <int dim, typename number, bool overlap_communication_computation>
+template <int dim, typename number>
 class LaplaceOperatorBase : public EnableObserverPointer {
 public:
   virtual ~LaplaceOperatorBase() = default;

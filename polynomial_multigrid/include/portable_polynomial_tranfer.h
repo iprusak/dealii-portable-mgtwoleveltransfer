@@ -317,11 +317,8 @@ void CellRestrictionKernel<dim, p_coarse, p_fine, number>::operator()(
   team_member.team_barrier();
 }
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-class PolynomialTransfer
-    : public PolynomialTransferBase<dim, number,
-                                    overlap_communication_computation> {
+template <int dim, int p_coarse, int p_fine, typename number>
+class PolynomialTransfer : public PolynomialTransferBase<dim, number> {
 public:
   PolynomialTransfer();
 
@@ -365,19 +362,14 @@ private:
       weights_view_kokkos;
 };
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-PolynomialTransfer<dim, p_coarse, p_fine, number,
-                   overlap_communication_computation>::PolynomialTransfer() {}
+template <int dim, int p_coarse, int p_fine, typename number>
+PolynomialTransfer<dim, p_coarse, p_fine, number>::PolynomialTransfer() {}
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-void PolynomialTransfer<dim, p_coarse, p_fine, number,
-                        overlap_communication_computation>::
-    prolongate_and_add(
-        LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
-        const LinearAlgebra::distributed::Vector<number, MemorySpace::Default>
-            &src) const {
+template <int dim, int p_coarse, int p_fine, typename number>
+void PolynomialTransfer<dim, p_coarse, p_fine, number>::prolongate_and_add(
+    LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
+    const LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &src)
+    const {
   Assert(dst.get_partitioner() == matrix_free_fine->get_vector_partitioner(),
          ExcMessage("Fine vector is not initialized correctly."));
   Assert(src.get_partitioner() == matrix_free_coarse->get_vector_partitioner(),
@@ -388,7 +380,7 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
   const auto &colored_graph = matrix_free_fine->get_colored_graph();
   const unsigned int n_colors = colored_graph.size();
 
-  if (overlap_communication_computation) {
+  if (matrix_free_fine->use_overlap_communication_computation()) {
     auto do_color = [&](const unsigned int color) {
       const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
       const auto &gpu_data_fine = matrix_free_fine->get_data(color);
@@ -473,14 +465,11 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
       ExcMessage("Coarse vector is not handled correclty after prolongation."));
 }
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-void PolynomialTransfer<dim, p_coarse, p_fine, number,
-                        overlap_communication_computation>::
-    restrict_and_add(
-        LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
-        const LinearAlgebra::distributed::Vector<number, MemorySpace::Default>
-            &src) const {
+template <int dim, int p_coarse, int p_fine, typename number>
+void PolynomialTransfer<dim, p_coarse, p_fine, number>::restrict_and_add(
+    LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &dst,
+    const LinearAlgebra::distributed::Vector<number, MemorySpace::Default> &src)
+    const {
   Assert(dst.get_partitioner() == matrix_free_coarse->get_vector_partitioner(),
          ExcMessage("Coarse vector is not initialized correctly."));
 
@@ -492,7 +481,7 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
   const auto &colored_graph = matrix_free_fine->get_colored_graph();
   const unsigned int n_colors = colored_graph.size();
 
-  if (overlap_communication_computation) {
+  if (matrix_free_fine->use_overlap_communication_computation()) {
     auto do_color = [&](const unsigned int color) {
       const auto &gpu_data_coarse = matrix_free_coarse->get_data(color);
       const auto &gpu_data_fine = matrix_free_fine->get_data(color);
@@ -577,14 +566,12 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
       ExcMessage("Fine vector is not handled correclty after restrtiction."));
 }
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-void PolynomialTransfer<dim, p_coarse, p_fine, number,
-                        overlap_communication_computation>::
-    reinit(const MatrixFree<dim, number> &mf_coarse,
-           const MatrixFree<dim, number> &mf_fine,
-           const AffineConstraints<number> &constraints_coarse,
-           const AffineConstraints<number> &constraints_fine) {
+template <int dim, int p_coarse, int p_fine, typename number>
+void PolynomialTransfer<dim, p_coarse, p_fine, number>::reinit(
+    const MatrixFree<dim, number> &mf_coarse,
+    const MatrixFree<dim, number> &mf_fine,
+    const AffineConstraints<number> &constraints_coarse,
+    const AffineConstraints<number> &constraints_fine) {
   this->matrix_free_coarse = &mf_coarse;
   this->matrix_free_fine = &mf_fine;
 
@@ -700,11 +687,9 @@ void PolynomialTransfer<dim, p_coarse, p_fine, number,
   setup_weights_and_boundary_dofs_masks();
 }
 
-template <int dim, int p_coarse, int p_fine, typename number,
-          bool overlap_communication_computation>
-void PolynomialTransfer<dim, p_coarse, p_fine, number,
-                        overlap_communication_computation>::
-    setup_weights_and_boundary_dofs_masks() {
+template <int dim, int p_coarse, int p_fine, typename number>
+void PolynomialTransfer<dim, p_coarse, p_fine,
+                        number>::setup_weights_and_boundary_dofs_masks() {
   const auto &dof_handler_fine = matrix_free_fine->get_dof_handler();
   const auto &dof_handler_coarse = matrix_free_coarse->get_dof_handler();
   const auto &fe_fine = dof_handler_fine.get_fe();
