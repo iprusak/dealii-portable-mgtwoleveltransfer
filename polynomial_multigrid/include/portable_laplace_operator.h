@@ -43,12 +43,17 @@ DEAL_II_HOST_DEVICE void
 LocalLaplaceOperator<dim, fe_degree, number>::operator()(
     const typename MatrixFree<dim, number>::Data *data,
     const DeviceVector<number> &src, DeviceVector<number> &dst) const {
+
   FEEvaluation<dim, fe_degree, fe_degree + 1, 1, number> fe_eval(data);
 
   fe_eval.read_dof_values(src);
   fe_eval.evaluate(EvaluationFlags::gradients);
-  fe_eval.apply_for_each_quad_point(
-      LaplaceOperatorQuad<dim, fe_degree, number>());
+
+  LaplaceOperatorQuad<dim, fe_degree, number> quad;
+
+  data->for_each_quad_point(
+      [&](const int &q_point) { quad(&fe_eval, q_point); });
+
   fe_eval.integrate(EvaluationFlags::gradients);
   fe_eval.distribute_local_to_global(dst);
 }

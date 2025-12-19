@@ -33,7 +33,9 @@
 
 using namespace dealii;
 
-template <int dim, int fe_degree, int mg_levels> class LaplaceProblem {
+template <int dim, int fe_degree, int mg_levels>
+class LaplaceProblem
+{
 public:
   LaplaceProblem(bool overlap_communication_computation = false);
 
@@ -78,7 +80,8 @@ private:
   bool overlap_communication_computation;
   ConditionalOStream pcout;
 
-  struct LaplaceOperatorRunner {
+  struct LaplaceOperatorRunner
+  {
     const int level;
     DoFHandler<dim> &dof_handler;
     AffineConstraints<double> &constraints;
@@ -86,14 +89,17 @@ private:
     bool overlap_communication_computation;
     LaplaceProblem<dim, fe_degree, mg_levels> &parent_problem;
 
-    template <unsigned int degree> void run() {
+    template <unsigned int degree>
+    void run()
+    {
       parent_problem.mg_matrices[level] =
           std::make_unique<Portable::LaplaceOperator<dim, degree, double>>(
               dof_handler, constraints, overlap_communication_computation);
     }
   };
 
-  struct PolynomialTransferRunner {
+  struct PolynomialTransferRunner
+  {
     const int level;
     const Portable::MatrixFree<dim, double> &mf_coarse;
     const Portable::MatrixFree<dim, double> &mf_fine;
@@ -102,7 +108,9 @@ private:
 
     LaplaceProblem<dim, fe_degree, mg_levels> &parent_problem;
 
-    template <unsigned int degree_coarse, unsigned int degree_fine> void run() {
+    template <unsigned int degree_coarse, unsigned int degree_fine>
+    void run()
+    {
       parent_problem.mg_transfers[level] =
           std::make_unique<Portable::PolynomialTransfer<dim, degree_coarse,
                                                         degree_fine, double>>();
@@ -119,7 +127,8 @@ LaplaceProblem<dim, fe_degree, mg_levels>::LaplaceProblem(
     : mpi_communicator(MPI_COMM_WORLD), triangulation(mpi_communicator),
       overlap_communication_computation(overlap_communication_computation),
       pcout(std::cout,
-            Utilities::MPI::this_mpi_process(mpi_communicator) == 0) {
+            Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+{
   {
     Assert(
         mg_levels <= fe_degree,
@@ -130,9 +139,11 @@ LaplaceProblem<dim, fe_degree, mg_levels>::LaplaceProblem(
     dof_handler_collection.reserve(mg_levels);
     constraints_collection.reserve(mg_levels);
 
-    for (int level = 0; level < mg_levels; ++level) {
+    for (int level = 0; level < mg_levels; ++level)
+    {
       const int p_degree = fe_degree - (mg_levels - 1 - level);
-      if (p_degree > 0) {
+      if (p_degree > 0)
+      {
         fe_collection.emplace_back(p_degree);
         dof_handler_collection.emplace_back(
             std::make_shared<DoFHandler<dim>>(triangulation));
@@ -143,7 +154,8 @@ LaplaceProblem<dim, fe_degree, mg_levels>::LaplaceProblem(
 }
 
 template <int dim, int fe_degree, int mg_levels>
-void LaplaceProblem<dim, fe_degree, mg_levels>::setup_system() {
+void LaplaceProblem<dim, fe_degree, mg_levels>::setup_system()
+{
   Functions::ZeroFunction<dim> homogeneous_dirichlet_bc;
   std::map<types::boundary_id, const Function<dim> *>
       dirichlet_boundary_functions = {
@@ -152,7 +164,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::setup_system() {
   mg_matrices.clear();
   mg_matrices.resize(0, mg_levels - 1);
 
-  for (int level = 0; level < mg_levels; ++level) {
+  for (int level = 0; level < mg_levels; ++level)
+  {
     auto &fe = fe_collection[level];
     auto &dof_handler = *dof_handler_collection[level];
     auto &constraints = constraints_collection[level];
@@ -196,11 +209,13 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::setup_system() {
 }
 
 template <int dim, int fe_degree, int mg_levels>
-void LaplaceProblem<dim, fe_degree, mg_levels>::setup_mg_transfers() {
+void LaplaceProblem<dim, fe_degree, mg_levels>::setup_mg_transfers()
+{
   mg_transfers.resize(mg_matrices.min_level(), mg_matrices.max_level());
 
   for (unsigned int level = mg_matrices.min_level() + 1;
-       level <= mg_matrices.max_level(); ++level) {
+       level <= mg_matrices.max_level(); ++level)
+  {
     PolynomialTransferRunner runner{(int)level,
                                     mg_matrices[level - 1]->get_mf_data(),
                                     mg_matrices[level]->get_mf_data(),
@@ -220,7 +235,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::setup_mg_transfers() {
 }
 
 template <int dim, int fe_degree, int mg_levels>
-void LaplaceProblem<dim, fe_degree, mg_levels>::assemble_rhs() {
+void LaplaceProblem<dim, fe_degree, mg_levels>::assemble_rhs()
+{
   auto &fe = fe_collection.back();
   auto &dof_handler = *dof_handler_collection.back();
   auto &constraints = constraints_collection.back();
@@ -240,8 +256,10 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::assemble_rhs() {
 
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-  for (const auto &cell : dof_handler.active_cell_iterators()) {
-    if (cell->is_locally_owned()) {
+  for (const auto &cell : dof_handler.active_cell_iterators())
+  {
+    if (cell->is_locally_owned())
+    {
       cell_rhs = 0;
 
       fe_values.reinit(cell);
@@ -265,7 +283,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::assemble_rhs() {
 }
 
 template <int dim, int fe_degree, int mg_levels>
-void LaplaceProblem<dim, fe_degree, mg_levels>::solve() {
+void LaplaceProblem<dim, fe_degree, mg_levels>::solve()
+{
   auto &constraints = constraints_collection.back();
 
   auto &system_matrix_device = mg_matrices.back();
@@ -282,16 +301,20 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::solve() {
   MGLevelObject<SmootherType> mg_smoothers;
   mg_smoothers.resize(0, mg_levels - 1);
 
-  for (int level = 0; level < mg_levels; ++level) {
+  for (int level = 0; level < mg_levels; ++level)
+  {
     typename SmootherType::AdditionalData smoother_data;
-    if (level > 0) {
+    if (level > 0)
+    {
       smoother_data.smoothing_range = 15.;
       smoother_data.degree = 5;
       smoother_data.eig_cg_n_iterations = 10;
-    } else {
+    }
+    else
+    {
       smoother_data.smoothing_range = 1e-3;
       smoother_data.degree = numbers::invalid_unsigned_int;
-      smoother_data.smoothing_range = mg_matrices[0]->m();
+      smoother_data.eig_cg_n_iterations = mg_matrices[0]->m();
     }
     smoother_data.constraints.copy_from(constraints_collection[level]);
     mg_matrices[level]->compute_diagonal();
@@ -325,7 +348,8 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::solve() {
 
 template <int dim, int fe_degree, int mg_levels>
 void LaplaceProblem<dim, fe_degree, mg_levels>::output_results(
-    const unsigned int cycle) const {
+    const unsigned int cycle) const
+{
   auto &dof_handler = *dof_handler_collection.back();
   auto &fe = fe_collection.back();
 
@@ -353,15 +377,21 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::output_results(
 }
 
 template <int dim, int fe_degree, int mg_levels>
-void LaplaceProblem<dim, fe_degree, mg_levels>::run() {
-  for (unsigned int cycle = 0; cycle < 9 - dim; ++cycle) {
-    pcout << std::endl << std::endl;
+void LaplaceProblem<dim, fe_degree, mg_levels>::run()
+{
+  for (unsigned int cycle = 0; cycle < 9 - dim; ++cycle)
+  {
+    pcout << std::endl
+          << std::endl;
     pcout << "Cycle " << cycle << std::endl;
 
-    if (cycle == 0) {
+    if (cycle == 0)
+    {
       GridGenerator::hyper_cube(triangulation, 0., 1.);
       triangulation.refine_global(3 - dim);
-    } else {
+    }
+    else
+    {
       triangulation.refine_global(1);
     }
 
@@ -375,8 +405,10 @@ void LaplaceProblem<dim, fe_degree, mg_levels>::run() {
   }
 }
 
-int main(int argc, char *argv[]) {
-  try {
+int main(int argc, char *argv[])
+{
+  try
+  {
     Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv, 1);
 
     const int dim = 3;
@@ -388,7 +420,9 @@ int main(int argc, char *argv[]) {
         overlap_communication_computation);
 
     laplace_problem.run();
-  } catch (std::exception &exc) {
+  }
+  catch (std::exception &exc)
+  {
     std::cerr << std::endl
               << std::endl
               << "----------------------------------------------------"
@@ -399,7 +433,9 @@ int main(int argc, char *argv[]) {
               << "----------------------------------------------------"
               << std::endl;
     return 1;
-  } catch (...) {
+  }
+  catch (...)
+  {
     std::cerr << std::endl
               << std::endl
               << "----------------------------------------------------"

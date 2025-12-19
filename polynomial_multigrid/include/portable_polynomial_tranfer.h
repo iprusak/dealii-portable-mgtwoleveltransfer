@@ -73,10 +73,12 @@ std::size_t
 CellProlongationKernel<dim, p_coarse, p_fine, number>::team_shmem_size(
     int /*team_size*/) const {
   return SharedView::shmem_size(
-      n_local_dofs_coarse + // coarse dof values
-      n_local_dofs_fine +   // fine dof values
-      2 * n_local_dofs_fine // at most two tmp vectors of at most
-                            // n_local_dofs_fine size
+      n_local_dofs_coarse +         // coarse dof values
+      n_local_dofs_fine +           // fine dof values
+      2 * n_local_dofs_fine +       // at most two tmp vectors of at most
+                                    // n_local_dofs_fine size
+      (p_fine + 1) * (p_coarse + 1) // 1D prolongation matrix
+
   );
 }
 
@@ -100,19 +102,34 @@ void CellProlongationKernel<dim, p_coarse, p_fine, number>::operator()(
       });
   team_member.team_barrier();
 
+  SharedView prolongation_matrix(team_member.team_shmem(),
+                                 (p_fine + 1) * (p_coarse + 1));
+
+  Kokkos::parallel_for(
+      Kokkos::TeamThreadRange(team_member, (p_fine + 1) * (p_coarse + 1)),
+      [&](const int &i) {
+        prolongation_matrix(i) = transfer_data.prolongation_matrix(i);
+      });
+  team_member.team_barrier();
+
+  // using ShapeDataViewType =
+  //     Kokkos::View<number *, MemorySpace::Default::kokkos_space::
+  //                                execution_space::scratch_memory_space>;
+
   // interpolation tensor-product prolongation kernel
   internal::EvaluatorTensorProduct<internal::EvaluatorVariant::evaluate_general,
-                                   dim, p_coarse + 1, p_fine + 1, number>
-      prolongation_kernel(
-          team_member,
-          /*shape_values=*/transfer_data.prolongation_matrix,
-          /*shape_gradients=*/
-          Kokkos::View<number *, MemorySpace::Default::kokkos_space>(),
-          /*co_shape_gradients=*/
-          Kokkos::View<number *, MemorySpace::Default::kokkos_space>(),
-          SharedView() // the evaluator does not need temporary
-                       // storage since no in-place operation takes
-                       // place in this function
+                                   dim, p_coarse + 1, p_fine + 1, number,
+                                   SharedView>
+      prolongation_kernel(team_member,
+                          // /*shape_values=*/transfer_data.prolongation_matrix,
+                          /*shape_values=*/prolongation_matrix,
+                          /*shape_gradients=*/
+                          SharedView(),
+                          /*co_shape_gradients=*/
+                          SharedView(),
+                          SharedView() // the evaluator does not need temporary
+                                       // storage since no in-place operation
+                                       // takes place in this function
       );
 
   // apply kernel in each direction
@@ -217,10 +234,11 @@ std::size_t
 CellRestrictionKernel<dim, p_coarse, p_fine, number>::team_shmem_size(
     int /*team_size*/) const {
   return SharedView::shmem_size(
-      n_local_dofs_coarse + // coarse dof values
-      n_local_dofs_fine +   // fine dof values
-      2 * n_local_dofs_fine // at most two tmp vectors of at most
-                            // n_local_dofs_fine size
+      n_local_dofs_coarse +         // coarse dof values
+      n_local_dofs_fine +           // fine dof values
+      2 * n_local_dofs_fine +       // at most two tmp vectors of at most
+                                    // n_local_dofs_fine size
+      (p_fine + 1) * (p_coarse + 1) // 1D prolongation matrix
   );
 }
 
