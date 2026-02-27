@@ -209,6 +209,18 @@ namespace Portable
         prolongation_matrix;
 
       /**
+       * DoF indices coarse.
+       */
+      Kokkos::View<unsigned int **, MemorySpace::Default::kokkos_space>
+        dof_indices_coarse;
+
+      /**
+       * DoF indices fine.
+       */
+      Kokkos::View<unsigned int **, MemorySpace::Default::kokkos_space>
+        dof_indices_fine;
+
+      /**
        * ShapeInfo description of the coarse cell. Needed during the
        * fast application of hanging-node constraints.
        */
@@ -220,6 +232,48 @@ namespace Portable
        */
       Kokkos::View<Number **, MemorySpace::Default::kokkos_space> weights;
     };
+
+
+    /**
+     * Struct used for copying the data to the execution kernel handled by
+     * internal::ApplyCellKernel. This is similar to MatrixFree<dim,
+     * Number>::Data.
+     */
+    struct TransferCellData
+    {
+      using TeamHandle = Kokkos::TeamPolicy<
+        MemorySpace::Default::kokkos_space::execution_space>::member_type;
+
+      using SharedViewValues =
+        Kokkos::View<Number *,
+                     MemorySpace::Default::kokkos_space::execution_space::
+                       scratch_memory_space,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
+
+      TeamHandle team_member;
+
+      const int cell_index;
+
+      const MGTransferScheme &transfer_data;
+
+      const SharedViewValues &prolongation_matrix_device;
+
+      /**
+       * Memory for coarse dof values.
+       */
+      SharedViewValues &values_coarse;
+
+      /**
+       * Memory for fine dof values.
+       */
+      SharedViewValues &values_fine;
+
+      /**
+       * Memory for temporary arrays required by kernel evaluation.
+       */
+      SharedViewValues &scratch_pad;
+    };
+
 
 
   protected:

@@ -40,46 +40,12 @@ namespace Portable
 {
   namespace internal
   {
-    template <int dim, typename Number>
-    struct TransferCellData
-    {
-      using TeamHandle = Kokkos::TeamPolicy<
-        MemorySpace::Default::kokkos_space::execution_space>::member_type;
 
-      using SharedViewValues =
-        Kokkos::View<Number *,
-                     MemorySpace::Default::kokkos_space::execution_space::
-                       scratch_memory_space,
-                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>;
-
-      TeamHandle team_member;
-
-      const int cell_index;
-
-      const typename MGTwoLevelTransfer<dim, Number>::MGTransferScheme
-        &transfer_scheme;
-
-      const SharedViewValues &prolongation_matrix_device;
-
-      /**
-       * Memory for coarse dof values.
-       */
-      SharedViewValues &values_coarse;
-
-      /**
-       * Memory for fine dof values.
-       */
-      SharedViewValues &values_fine;
-
-      /**
-       * Memory for temporary arrays required by kernel evaluation.
-       */
-      SharedViewValues &scratch_pad;
-    };
-
-    template <int dim, typename Number, typename Functor>
+    template <int dim, typename VectorType, typename Functor>
     struct ApplyCellKernel
     {
+      using Number = typename VectorType::value_type;
+
       using TeamHandle = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
 
@@ -92,11 +58,10 @@ namespace Portable
 
       ApplyCellKernel(
         Functor func,
-        const typename MGTwoLevelTransfer<dim, Number>::MGTransferScheme
-          transfer_scheme,
-        const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
-                                                                         &src,
-        LinearAlgebra::distributed::Vector<Number, MemorySpace::Default> &dst)
+        const typename MGTwoLevelTransfer<dim, VectorType>::MGTransferScheme
+                          transfer_scheme,
+        const VectorType &src,
+        VectorType       &dst)
         : func(func)
         , transfer_scheme(transfer_scheme)
         , src(src.get_values(), src.locally_owned_size())
@@ -105,7 +70,7 @@ namespace Portable
 
       Functor func;
 
-      const typename MGTwoLevelTransfer<dim, Number>::MGTransferScheme
+      const typename MGTwoLevelTransfer<dim, VectorType>::MGTransferScheme
         transfer_scheme;
 
       const DeviceVector<Number> src;
@@ -157,23 +122,26 @@ namespace Portable
           });
         team_member.team_barrier();
 
-        TransferCellData<dim, Number> data{team_member,
-                                           cell_index,
-                                           transfer_scheme,
-                                           prolongation_matrix_device,
-                                           values_coarse,
-                                           values_fine,
-                                           scratch_pad};
+        typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData data{
+          team_member,
+          cell_index,
+          transfer_scheme,
+          prolongation_matrix_device,
+          values_coarse,
+          values_fine,
+          scratch_pad};
 
         DeviceVector<Number> nonconstdst = dst;
         func(&data, src, nonconstdst);
       }
     };
 
-    template <int dim, typename Number>
+    template <int dim, typename VectorType>
     class CellProlongationKernel : public EnableObserverPointer
     {
     public:
+      using Number = typename VectorType::value_type;
+
       using TeamHandle = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
 
@@ -187,22 +155,25 @@ namespace Portable
 
 
       DEAL_II_HOST_DEVICE void
-      operator()(const TransferCellData<dim, Number> *cell_data,
-                 const DeviceVector<Number>          &src,
-                 DeviceVector<Number>                &dst) const;
+      operator()(
+        const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
+                                   *cell_data,
+        const DeviceVector<Number> &src,
+        DeviceVector<Number>       &dst) const;
     };
 
-    template <int dim, typename Number>
-    CellProlongationKernel<dim, Number>::CellProlongationKernel()
+    template <int dim, typename VectorType>
+    CellProlongationKernel<dim, VectorType>::CellProlongationKernel()
     {}
 
 
-    template <int dim, typename Number>
+    template <int dim, typename VectorType>
     DEAL_II_HOST_DEVICE void
-    CellProlongationKernel<dim, Number>::operator()(
-      const TransferCellData<dim, Number> *cell_data,
-      const DeviceVector<Number>          &src,
-      DeviceVector<Number>                &dst) const
+    CellProlongationKernel<dim, VectorType>::operator()(
+      const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
+                                 *cell_data,
+      const DeviceVector<Number> &src,
+      DeviceVector<Number>       &dst) const
     {
       const int   cell_index  = cell_data->cell_index;
       const auto &team_member = cell_data->team_member;
@@ -306,9 +277,9 @@ namespace Portable
         }
       else if constexpr (dim == 3)
         {
-          constexpr int tmp1_size =
+          const int tmp1_size =
             Utilities::pow(degree_coarse + 1, 2) * (degree_fine + 1);
-          constexpr int tmp2_size =
+          const int tmp2_size =
             Utilities::pow(degree_fine + 1, 2) * (degree_coarse + 1);
           auto tmp1 =
             Kokkos::subview(scratch_pad, Kokkos::make_pair(0, tmp1_size));
@@ -417,7 +388,7 @@ namespace Portable
                              team_member, transfer_data.n_dofs_per_cell_fine),
                            [&](const int &i) {
                              values_fine(i) *=
-                               cell_data->weights(i, cell_index);
+                               transfer_data.weights(i, cell_index);
                            });
       team_member.team_barrier();
 
@@ -432,10 +403,12 @@ namespace Portable
       team_member.team_barrier();
     }
 
-    template <int dim, typename Number>
+    template <int dim, typename VectorType>
     class CellRestrictionKernel : public EnableObserverPointer
     {
     public:
+      using Number = typename VectorType::value_type;
+
       using TeamHandle = Kokkos::TeamPolicy<
         MemorySpace::Default::kokkos_space::execution_space>::member_type;
 
@@ -446,24 +419,26 @@ namespace Portable
 
       CellRestrictionKernel();
 
-
-
       DEAL_II_HOST_DEVICE void
-      operator()(const TransferCellData<dim, Number> *cell_data,
-                 const DeviceVector<Number>          &src,
-                 DeviceVector<Number>                &dst) const;
+      operator()(
+        const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
+                                   *cell_data,
+        const DeviceVector<Number> &src,
+        DeviceVector<Number>       &dst) const;
     };
 
-    template <int dim, typename Number>
-    CellRestrictionKernel<dim, Number>::CellRestrictionKernel()
+
+    template <int dim, typename VectorType>
+    CellRestrictionKernel<dim, VectorType>::CellRestrictionKernel()
     {}
 
-    template <int dim, typename Number>
+    template <int dim, typename VectorType>
     DEAL_II_HOST_DEVICE void
-    CellRestrictionKernel<dim, Number>::operator()(
-      const TransferCellData<dim, Number> *cell_data,
-      const DeviceVector<Number>          &src,
-      DeviceVector<Number>                &dst) const
+    CellRestrictionKernel<dim, VectorType>::operator()(
+      const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
+                                 *cell_data,
+      const DeviceVector<Number> &src,
+      DeviceVector<Number>       &dst) const
     {
       const int   cell_index  = cell_data->cell_index;
       const auto &team_member = cell_data->team_member;
@@ -497,7 +472,7 @@ namespace Portable
                              team_member, transfer_data.n_dofs_per_cell_fine),
                            [&](const int &i) {
                              values_fine(i) *=
-                               cell_data->weights(i, cell_index);
+                               transfer_data.weights(i, cell_index);
                            });
       team_member.team_barrier();
 
@@ -572,9 +547,9 @@ namespace Portable
         }
       else if constexpr (dim == 3)
         {
-          constexpr int tmp1_size =
+          const int tmp1_size =
             Utilities::pow(degree_fine + 1, 2) * (degree_coarse + 1);
-          constexpr int tmp2_size =
+          const int tmp2_size =
             Utilities::pow(degree_coarse + 1, 2) * (degree_fine + 1);
 
           auto tmp1 =
@@ -1353,7 +1328,6 @@ namespace Portable
       }
     };
 
-
   } // namespace internal
 
   template <int dim, typename VectorType>
@@ -1372,7 +1346,7 @@ namespace Portable
         using TeamPolicy = Kokkos::TeamPolicy<
           MemorySpace::Default::kokkos_space::execution_space>;
 
-        using Functor = internal::CellProlongationKernel<dim, Number>;
+        using Functor = internal::CellProlongationKernel<dim, VectorType>;
 
         MemorySpace::Default::kokkos_space::execution_space exec;
 
@@ -1387,8 +1361,8 @@ namespace Portable
             auto team_policy =
               TeamPolicy(exec, scheme.n_coarse_cells, Kokkos::AUTO);
 
-            internal::ApplyCellKernel<dim, Number, Functor> apply_prolongation(
-              prolongator, scheme, src, dst);
+            internal::ApplyCellKernel<dim, VectorType, Functor>
+              apply_prolongation(prolongator, scheme, src, dst);
 
             Kokkos::parallel_for("prolongate_and_add_h_transfer_scheme_" +
                                    std::to_string(scheme_index),
@@ -1415,7 +1389,7 @@ namespace Portable
         using TeamPolicy = Kokkos::TeamPolicy<
           MemorySpace::Default::kokkos_space::execution_space>;
 
-        using Functor = internal::CellRestrictionKernel<dim, Number>;
+        using Functor = internal::CellRestrictionKernel<dim, VectorType>;
 
         MemorySpace::Default::kokkos_space::execution_space exec;
 
@@ -1430,8 +1404,8 @@ namespace Portable
             auto team_policy =
               TeamPolicy(exec, scheme.n_coarse_cells, Kokkos::AUTO);
 
-            internal::ApplyCellKernel<dim, Number, Functor> apply_restriction(
-              restrictor, scheme, src, dst);
+            internal::ApplyCellKernel<dim, VectorType, Functor>
+              apply_restriction(restrictor, scheme, src, dst);
 
             Kokkos::parallel_for("prolongate_and_add_h_transfer_scheme_" +
                                    std::to_string(scheme_index),
