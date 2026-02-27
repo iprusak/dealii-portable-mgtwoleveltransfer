@@ -32,8 +32,6 @@
 #include <deal.II/multigrid/mg_transfer_matrix_free.templates.h>
 
 
-// #include <deal.II/multigrid/portable_mg_transfer_global_coarsening.h>
-
 DEAL_II_NAMESPACE_OPEN
 
 namespace Portable
@@ -61,7 +59,7 @@ namespace Portable
         const typename MGTwoLevelTransfer<dim, VectorType>::MGTransferScheme
                           transfer_scheme,
         const VectorType &src,
-        VectorType       &dst)
+        const VectorType &dst)
         : func(func)
         , transfer_scheme(transfer_scheme)
         , src(src.get_values(), src.locally_owned_size())
@@ -74,7 +72,7 @@ namespace Portable
         transfer_scheme;
 
       const DeviceVector<Number> src;
-      DeviceVector<Number>       dst;
+      const DeviceVector<Number> dst;
 
       // Provide the shared memory capacity. This function takes the team_size
       // as an argument, which allows team_size dependent allocations.
@@ -131,8 +129,7 @@ namespace Portable
           values_fine,
           scratch_pad};
 
-        DeviceVector<Number> nonconstdst = dst;
-        func(&data, src, nonconstdst);
+        func(&data, src, dst);
       }
     };
 
@@ -159,7 +156,7 @@ namespace Portable
         const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
                                    *cell_data,
         const DeviceVector<Number> &src,
-        DeviceVector<Number>       &dst) const;
+        const DeviceVector<Number> &dst) const;
     };
 
     template <int dim, typename VectorType>
@@ -173,7 +170,7 @@ namespace Portable
       const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
                                  *cell_data,
       const DeviceVector<Number> &src,
-      DeviceVector<Number>       &dst) const
+      const DeviceVector<Number> &dst) const
     {
       const int   cell_index  = cell_data->cell_index;
       const auto &team_member = cell_data->team_member;
@@ -424,7 +421,7 @@ namespace Portable
         const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
                                    *cell_data,
         const DeviceVector<Number> &src,
-        DeviceVector<Number>       &dst) const;
+        const DeviceVector<Number> &dst) const;
     };
 
 
@@ -438,7 +435,7 @@ namespace Portable
       const typename MGTwoLevelTransfer<dim, VectorType>::TransferCellData
                                  *cell_data,
       const DeviceVector<Number> &src,
-      DeviceVector<Number>       &dst) const
+      const DeviceVector<Number> &dst) const
     {
       const int   cell_index  = cell_data->cell_index;
       const auto &team_member = cell_data->team_member;
