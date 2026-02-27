@@ -61,24 +61,14 @@ namespace Portable
    * (matrix-free) interpolation setup with the reference-cell embedding
    * matrices.
    *
-   * The implementation of this class is explained in detail in @cite
-   * munch2022gc.
+   * The implementation of this class is similar to MGTwoLevelTransfer which is
+   * explained in detail in @cite munch2022gc.
    *
-   * There are two possible ways to use this class. In the first option, the
-   * transfer is built from the underlying DoFHandler and AffineConstraints
+   * The transfer is built from the underlying DoFHandler and AffineConstraints
    * objects on the coarse and fine side, collecting an explicit copy of all
-   * indices on both sides. This works for a relatively wide set of
-   * FiniteElement combinations, including p-adaptive schemes using
-   * hp::FECollection. The second, more setup-efficient approach is to build the
-   * transfer between two multigrid levels for polynomial coarsening
-   * (p-coarsening) from two MatrixFree objects that might already exist from
-   * other parts of the code. In this case, we require that both objects share
-   * the same triangulation (but differ through their DoFHandler descriptions)
-   * and are described by the respective DoFHandler/AffineConstraints pair. This
-   * second variant is more efficient because no queries to the DoFHandler need
-   * to be made, reducing both the setup time and the overall memory
-   * consumption. Note that not all options are supported for the second entry
-   * point, and we fall back to the first option in such a case.
+   * indices on both sides. For the moment, this works with FE_Q and a single
+   * DoFHandler. The intergration of other types of finite elements as well as
+   * polynomial transfer is underway.
    */
   template <int dim, typename VectorType>
   class MGTwoLevelTransfer
@@ -354,7 +344,6 @@ namespace Portable
     unsigned int mg_level_fine;
 
     friend class internal::MGTwoLevelTransferImplementation;
-
   };
 
 } // namespace Portable
