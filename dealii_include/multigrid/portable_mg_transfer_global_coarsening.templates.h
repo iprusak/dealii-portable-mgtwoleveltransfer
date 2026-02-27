@@ -210,8 +210,8 @@ namespace Portable
       // apply kernel in each direction
       if constexpr (dim == 2)
         {
-          constexpr int temp_size = (degree_coarse + 1) * (degree_fine + 1);
-          auto          tmp =
+          const int temp_size = (degree_coarse + 1) * (degree_fine + 1);
+          auto      tmp =
             Kokkos::subview(scratch_pad, Kokkos::make_pair(0, temp_size));
 
           {
@@ -479,7 +479,7 @@ namespace Portable
       // apply kernel in each direction
       if constexpr (dim == 2)
         {
-          constexpr int tmp_size = (degree_coarse + 1) * (degree_fine + 1);
+          const int tmp_size = (degree_coarse + 1) * (degree_fine + 1);
 
           auto tmp =
             Kokkos::subview(scratch_pad, Kokkos::make_pair(0, tmp_size));
@@ -684,6 +684,8 @@ namespace Portable
         if (transfer.fine_element_is_continuous == false)
           return; // nothing to do
 
+        Assert(is_feq, ExcNotImplemented());
+
         // 1) compute weights globally
         LinearAlgebra::distributed::Vector<Number> weight_vector;
         weight_vector.reinit(transfer.partitioner_fine);
@@ -743,6 +745,7 @@ namespace Portable
           }
       }
 
+    public:
       template <int dim, typename Number>
       static void
       reinit_geometric_transfer(
@@ -775,7 +778,7 @@ namespace Portable
             mg_level_fine,
             mg_level_coarse);
 
-        const auto reference_cell = dof_handler_fine->get_fe().reference_cell();
+        const auto reference_cell = dof_handler_fine.get_fe().reference_cell();
 
         // set up mg-schemes
         //   (0) no refinement -> identity
@@ -798,7 +801,7 @@ namespace Portable
         // performed on children of cells that are refined
         auto process_cells = [&](const auto &fu_non_refined,
                                  const auto &fu_refined) {
-          loop_over_active_or_level_cells(
+          dealii::internal::loop_over_active_or_level_cells(
             dof_handler_coarse, mg_level_coarse, [&](const auto &cell_coarse) {
               if (mg_level_coarse == numbers::invalid_unsigned_int)
                 {
@@ -916,7 +919,7 @@ namespace Portable
                                  transfer.schemes[0].n_dofs_per_cell_coarse,
                                  is_feq ? fe_fine.degree : (fe_fine.degree + 1),
                                  fe_fine.degree) :
-                               dealii::internal::get_child_offsets<dim>(
+                               dealii::internal::get_child_offsets_general<dim>(
                                  transfer.schemes[0].n_dofs_per_cell_coarse);
 
 
@@ -1138,7 +1141,7 @@ namespace Portable
         // code path is used during prolongation/restriction
 
         // Hasn't been tested with local mesh refinement yet!
-        Assert(transfer.schemes[0] == 0, ExcNotImplemented());
+        Assert(transfer.schemes[0].n_coarse_cells == 0, ExcNotImplemented());
 
         // --------------prolongation matrix (i = 1 ... n)--------------
         {
@@ -1203,7 +1206,7 @@ namespace Portable
                                                            renumbering[i]);
 
                     Kokkos::deep_copy(transfer.schemes[transfer_scheme_index]
-                                        .prolongation_matrix_shared_memory,
+                                        .prolongation_matrix,
                                       prolongation_matrix_host);
                     Kokkos::fence();
                   }
@@ -1328,6 +1331,7 @@ namespace Portable
       }
     };
 
+
   } // namespace internal
 
   template <int dim, typename VectorType>
@@ -1339,7 +1343,7 @@ namespace Portable
     if (matrix_free_data.get() != nullptr)
       {
         // p-transfer with MatrixFree cell loop will be added soon
-        Assert(true, ExcNotImplemented());
+        Assert(false, ExcNotImplemented());
       }
     else
       {
@@ -1382,7 +1386,7 @@ namespace Portable
     if (matrix_free_data.get() != nullptr)
       {
         // p-transfer with MatrixFree cell loop will be added soon
-        Assert(true, ExcNotImplemented());
+        Assert(false, ExcNotImplemented());
       }
     else
       {
@@ -1415,6 +1419,90 @@ namespace Portable
           }
       }
   }
+
+  template <int dim, typename VectorType>
+  std::pair<const DoFHandler<dim> *, unsigned int>
+  MGTwoLevelTransfer<dim, VectorType>::get_dof_handler_fine() const
+  {
+    return {this->dof_handler_fine, this->mg_level_fine};
+  }
+
+  template <int dim, typename VectorType>
+  std::size_t
+  MGTwoLevelTransfer<dim, VectorType>::memory_consumption() const
+  {
+    Assert(false, ExcNotImplemented());
+
+    return 0;
+  }
+
+  template <int dim, typename VectorType>
+  void
+  MGTwoLevelTransfer<dim, VectorType>::interpolate(VectorType       &dst,
+                                                   const VectorType &src) const
+  {
+    (void)dst;
+    (void)src;
+    Assert(false, ExcNotImplemented());
+  }
+
+  template <int dim, typename VectorType>
+  std::pair<bool, bool>
+  MGTwoLevelTransfer<dim, VectorType>::enable_inplace_operations_if_possible(
+    const std::shared_ptr<const Utilities::MPI::Partitioner>
+      &external_partitioner_coarse,
+    const std::shared_ptr<const Utilities::MPI::Partitioner>
+      &external_partitioner_fine)
+  {
+    if (matrix_free_data.get() != nullptr)
+      return std::make_pair(true, true);
+    else
+      return this->internal_enable_inplace_operations_if_possible(
+        external_partitioner_coarse,
+        external_partitioner_fine,
+        this->vec_fine_needs_ghost_update,
+        constraint_info_coarse,
+        constraint_info_fine.dof_indices);
+  }
+
+  template <int dim, typename VectorType>
+  void
+  MGTwoLevelTransfer<dim, VectorType>::reinit_geometric_transfer(
+    const DoFHandler<dim>           &dof_handler_fine,
+    const DoFHandler<dim>           &dof_handler_coarse,
+    const AffineConstraints<Number> &constraints_fine,
+    const AffineConstraints<Number> &constraints_coarse,
+    const unsigned int               mg_level_fine,
+    const unsigned int               mg_level_coarse)
+  {
+    matrix_free_data.reset();
+    internal::MGTwoLevelTransferImplementation::reinit_geometric_transfer(
+      dof_handler_fine,
+      dof_handler_coarse,
+      constraints_fine,
+      constraints_coarse,
+      mg_level_fine,
+      mg_level_coarse,
+      *this);
+  }
+
+  template <int dim, typename VectorType>
+  void
+  MGTwoLevelTransfer<dim, VectorType>::reinit_polynomial_transfer(
+    const MatrixFree<dim, Number> &matrix_free_fine,
+    const unsigned int             dof_handler_index_fine,
+    const MatrixFree<dim, Number> &matrix_free_coarse,
+    const unsigned int             dof_handler_index_coarse)
+  {
+    (void)matrix_free_fine;
+    (void)dof_handler_index_fine;
+    (void)matrix_free_coarse;
+    (void)dof_handler_index_coarse;
+
+    Assert(false, ExcNotImplemented());
+  }
+
+
 
 } // namespace Portable
 

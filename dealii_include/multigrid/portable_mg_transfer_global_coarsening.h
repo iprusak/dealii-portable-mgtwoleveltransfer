@@ -354,6 +354,7 @@ namespace Portable
     unsigned int mg_level_fine;
 
     friend class internal::MGTwoLevelTransferImplementation;
+
   };
 
 } // namespace Portable

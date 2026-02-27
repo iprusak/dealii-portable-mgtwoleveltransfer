@@ -411,10 +411,46 @@ template <int dim, int fe_degree>
 void
 LaplaceProblem<dim, fe_degree>::test()
 {
-  Portable::MGTwoLevelTransfer<
+  using DealiiTransfer = Portable::MGTwoLevelTransfer<
     dim,
-    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>
-    transfer;
+    LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>;
+
+  MGLevelObject<std::unique_ptr<DealiiTransfer>> dealii_mg_transfers;
+
+  dealii_mg_transfers.resize(level_matrices.min_level(),
+                             level_matrices.max_level());
+
+  for (unsigned int level = level_matrices.min_level() + 1;
+       level <= level_matrices.max_level();
+       ++level)
+    {
+      dealii_mg_transfers[level] = std::make_unique<DealiiTransfer>();
+
+      dealii_mg_transfers[level]->reinit_geometric_transfer(
+        level_dof_handlers[level],
+        level_dof_handlers[level - 1],
+        level_constraints[level],
+        level_constraints[level - 1],
+        numbers::invalid_unsigned_int,
+        numbers::invalid_unsigned_int);
+    }
+
+  const auto &system_matrix = *level_matrices.back();
+
+  Portable::VCycleMultigrid<dim, double, DealiiTransfer> mg_preconditioner(
+    level_matrices, dealii_mg_transfers, mg_smoothers, 5, 5);
+
+  SolverControl solver_control(system_rhs_device.size(),
+                               1e-12 * system_rhs_device.l2_norm());
+  SolverCG<LinearAlgebra::distributed::Vector<double, MemorySpace::Default>> cg(
+    solver_control);
+  cg.solve(system_matrix,
+           solution_device,
+           system_rhs_device,
+           mg_preconditioner);
+
+  pcout << "  Solver converged in " << solver_control.last_step()
+        << " iterations." << std::endl;
 }
 template <int dim, int fe_degree>
 void
@@ -443,9 +479,9 @@ LaplaceProblem<dim, fe_degree>::run()
       setup_mg_transfers();
       setup_smoothers();
       assemble_rhs();
-      solve();
-      post_process_solution();
-      output_results(cycle);
+      //   solve();
+      //   post_process_solution();
+      //   output_results(cycle);
 
       test();
     }
